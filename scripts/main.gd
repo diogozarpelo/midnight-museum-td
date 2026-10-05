@@ -8,6 +8,9 @@ var enemy_progress: float = 0.0
 var enemy_health: int = 100
 var enemy_attack_cooldown: float = 0.0
 const DEFENDER_HEALTH: int = 100
+const GARGOYLE_HEALTH: int = 300
+var selected_defender: String = "sentinel"
+var defender_group: ButtonGroup = ButtonGroup.new()
 const ENEMY_ATTACK_DAMAGE: int = 25
 const ENEMY_ATTACK_INTERVAL: float = 1.0
 const ATTACK_DAMAGE: int = 25
@@ -36,9 +39,10 @@ func _ready() -> void:
     title.custom_minimum_size = Vector2(0, 52)
 
     var instruction := Label.new()
-    instruction.text = "Clique em uma casa livre para colocar uma sentinela."
+    instruction.text = "Escolha um defensor e clique em uma casa livre."
     instruction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     layout.add_child(instruction)
+    layout.add_child(_create_defender_selector())
 
     var grid := GridContainer.new()
     grid.name = "Board"
@@ -95,12 +99,17 @@ func _on_cell_pressed(row: int, column: int) -> void:
         selection_label.text = "Nao pode colocar uma unidade sobre o inimigo."
         return
 
-    cell.set_meta("defender", "sentinel")
-    cell.set_meta("health", DEFENDER_HEALTH)
+    var health: int = DEFENDER_HEALTH
+    if selected_defender == "gargoyle":
+        health = GARGOYLE_HEALTH
+
+    cell.set_meta("defender", selected_defender)
+    cell.set_meta("health", health)
     cell.set_meta("attack_cooldown", 0.0)
-    cell.text = "Sentinela\n%d" % DEFENDER_HEALTH
-    selection_label.text = "Sentinela colocada na faixa %d, casa %d." % [
-        row + 1, column + 1
+    var defender_name: String = _defender_name(selected_defender)
+    cell.text = "%s\n%d" % [defender_name, health]
+    selection_label.text = "%s na faixa %d, casa %d." % [
+        defender_name, row + 1, column + 1
     ]
 
 
@@ -162,6 +171,9 @@ func _update_attacks(delta: float) -> void:
         ) as Button
 
         if not cell.has_meta("defender"):
+            continue
+
+        if str(cell.get_meta("defender")) != "sentinel":
             continue
 
         var cooldown: float = maxf(
@@ -248,13 +260,46 @@ func _damage_defender(cell: Button, column: int) -> void:
         int(cell.get_meta("health")) - ENEMY_ATTACK_DAMAGE, 0
     )
     cell.set_meta("health", health)
-    cell.text = "Sentinela\n%d" % health
+    var defender_name: String = _defender_name(str(cell.get_meta("defender")))
+    cell.text = "%s\n%d" % [defender_name, health]
 
     if health == 0:
         cell.remove_meta("defender")
         cell.remove_meta("health")
         cell.remove_meta("attack_cooldown")
         cell.text = "2 - %d" % [column + 1]
-        selection_label.text = "Sentinela destruida! A sombra voltou a avancar."
+        selection_label.text = "%s foi destruida! A sombra voltou a avancar." % defender_name
     else:
-        selection_label.text = "A sombra esta atacando a sentinela."
+        selection_label.text = "A sombra esta atacando: %s." % defender_name
+
+
+func _create_defender_selector() -> HBoxContainer:
+    var selector := HBoxContainer.new()
+    selector.name = "DefenderSelector"
+    selector.alignment = BoxContainer.ALIGNMENT_CENTER
+    selector.add_theme_constant_override("separation", 12)
+
+    for defender_id in ["sentinel", "gargoyle"]:
+        var button := Button.new()
+        button.text = _defender_name(defender_id)
+        button.custom_minimum_size = Vector2(150, 44)
+        button.toggle_mode = true
+        button.button_group = defender_group
+        button.button_pressed = defender_id == selected_defender
+        button.pressed.connect(_select_defender.bind(defender_id))
+        selector.add_child(button)
+
+    return selector
+
+
+func _select_defender(defender_id: String) -> void:
+    selected_defender = defender_id
+    selection_label.text = "Selecionado: %s. Escolha uma casa livre." % [
+        _defender_name(defender_id)
+    ]
+
+
+func _defender_name(defender_id: String) -> String:
+    if defender_id == "gargoyle":
+        return "Gargula"
+    return "Sentinela"
