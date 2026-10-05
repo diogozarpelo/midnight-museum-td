@@ -23,6 +23,13 @@ const ATTACK_INTERVAL: float = 1.5
 const ENEMY_CROSSING_SECONDS: float = 20.0
 
 
+const ENERGY_PICKUP_VALUE: int = 25
+const ENERGY_INTERVAL: float = 5.0
+const MAX_ENERGY_PICKUPS: int = 3
+var energy: int = 150
+var energy_label: Label
+var energy_pickups: HBoxContainer
+
 var selection_label: Label
 var cell_group: ButtonGroup = ButtonGroup.new()
 
@@ -48,6 +55,7 @@ func _ready() -> void:
     instruction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     layout.add_child(instruction)
     layout.add_child(_create_defender_selector())
+    layout.add_child(_create_energy_bar())
 
     var grid := GridContainer.new()
     grid.name = "Board"
@@ -78,6 +86,7 @@ func _ready() -> void:
     selection_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     layout.add_child(selection_label)
     _create_test_enemy()
+    _start_energy_timer()
 
 
 func _selected_style() -> StyleBoxFlat:
@@ -104,10 +113,17 @@ func _on_cell_pressed(row: int, column: int) -> void:
         selection_label.text = "Nao pode colocar uma unidade sobre o inimigo."
         return
 
+    var cost: int = _defender_cost(selected_defender)
+    if energy < cost:
+        selection_label.text = "Energia insuficiente: precisa de %d." % cost
+        return
+
     var health: int = DEFENDER_HEALTH
     if selected_defender == "gargoyle":
         health = GARGOYLE_HEALTH
 
+    energy -= cost
+    _refresh_energy_label()
     cell.set_meta("defender", selected_defender)
     cell.set_meta("health", health)
     cell.set_meta("attack_cooldown", 0.0)
@@ -306,7 +322,9 @@ func _create_defender_selector() -> HBoxContainer:
 
     for defender_id in ["sentinel", "gargoyle", "mage"]:
         var button := Button.new()
-        button.text = _defender_name(defender_id)
+        button.text = "%s (%d)" % [
+            _defender_name(defender_id), _defender_cost(defender_id)
+        ]
         button.custom_minimum_size = Vector2(150, 44)
         button.toggle_mode = true
         button.button_group = defender_group
@@ -330,3 +348,64 @@ func _defender_name(defender_id: String) -> String:
     if defender_id == "mage":
         return "Mago"
     return "Sentinela"
+
+
+func _defender_cost(defender_id: String) -> int:
+    if defender_id == "mage":
+        return 75
+    return 50
+
+
+func _create_energy_bar() -> HBoxContainer:
+    var bar := HBoxContainer.new()
+    bar.name = "EnergyBar"
+    bar.custom_minimum_size = Vector2(0, 44)
+    bar.alignment = BoxContainer.ALIGNMENT_CENTER
+    bar.add_theme_constant_override("separation", 16)
+
+    energy_label = Label.new()
+    energy_label.custom_minimum_size = Vector2(150, 0)
+    bar.add_child(energy_label)
+    _refresh_energy_label()
+
+    energy_pickups = HBoxContainer.new()
+    energy_pickups.name = "Pickups"
+    energy_pickups.add_theme_constant_override("separation", 8)
+    bar.add_child(energy_pickups)
+    return bar
+
+
+func _refresh_energy_label() -> void:
+    energy_label.text = "Energia: %d" % energy
+
+
+func _start_energy_timer() -> void:
+    var timer := Timer.new()
+    timer.name = "EnergyTimer"
+    timer.wait_time = ENERGY_INTERVAL
+    timer.timeout.connect(_spawn_energy_pickup)
+    add_child(timer)
+    timer.start()
+
+
+func _spawn_energy_pickup() -> void:
+    if energy_pickups.get_child_count() >= MAX_ENERGY_PICKUPS:
+        return
+
+    var pickup := Button.new()
+    pickup.text = "+%d energia" % ENERGY_PICKUP_VALUE
+    pickup.custom_minimum_size = Vector2(110, 44)
+    pickup.pressed.connect(_collect_energy.bind(pickup))
+    energy_pickups.add_child(pickup)
+
+
+func _collect_energy(pickup: Button) -> void:
+    if not is_instance_valid(pickup) or pickup.is_queued_for_deletion():
+        return
+    if pickup.disabled:
+        return
+
+    pickup.disabled = true
+    energy += ENERGY_PICKUP_VALUE
+    _refresh_energy_label()
+    pickup.queue_free()
