@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://c7yf16tb35vkl"]
+
+[node name="Main" type="Control" unique_id=1292298207]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Background" type="ColorRect" parent="." unique_id=556504732]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.055, 0.065, 0.12, 1)
+
+[node name="Title" type="Label" parent="." unique_id=274447343]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.95, 0.8, 0.45, 1)
+theme_override_font_sizes/font_size = 42
+text = "Midnight Museum TD"
+horizontal_alignment = 1
+vertical_alignment = 1
