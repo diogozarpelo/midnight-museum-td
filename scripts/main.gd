@@ -15,6 +15,8 @@ const SLOW_DURATION: float = 1.5
 const SLOW_MULTIPLIER: float = 0.5
 var enemy_slow_remaining: float = 0.0
 var selected_defender: String = "sentinel"
+var placement_timers: Dictionary = {}
+var defender_buttons: Dictionary = {}
 var defender_group: ButtonGroup = ButtonGroup.new()
 const ENEMY_ATTACK_DAMAGE: int = 25
 const ENEMY_ATTACK_INTERVAL: float = 1.0
@@ -87,6 +89,7 @@ func _ready() -> void:
     layout.add_child(selection_label)
     _create_test_enemy()
     _start_energy_timer()
+    _start_cooldown_display()
 
 
 func _selected_style() -> StyleBoxFlat:
@@ -113,6 +116,13 @@ func _on_cell_pressed(row: int, column: int) -> void:
         selection_label.text = "Nao pode colocar uma unidade sobre o inimigo."
         return
 
+    var placement_timer: Timer = placement_timers[selected_defender]
+    if not placement_timer.is_stopped():
+        selection_label.text = "Aguarde %.1f s para colocar outro: %s." % [
+            placement_timer.time_left, _defender_name(selected_defender)
+        ]
+        return
+
     var cost: int = _defender_cost(selected_defender)
     if energy < cost:
         selection_label.text = "Energia insuficiente: precisa de %d." % cost
@@ -122,6 +132,8 @@ func _on_cell_pressed(row: int, column: int) -> void:
     if selected_defender == "gargoyle":
         health = GARGOYLE_HEALTH
 
+    placement_timer.start()
+    _refresh_defender_buttons()
     energy -= cost
     _refresh_energy_label()
     cell.set_meta("defender", selected_defender)
@@ -331,6 +343,14 @@ func _create_defender_selector() -> HBoxContainer:
         button.button_pressed = defender_id == selected_defender
         button.pressed.connect(_select_defender.bind(defender_id))
         selector.add_child(button)
+        defender_buttons[defender_id] = button
+
+        var placement_timer := Timer.new()
+        placement_timer.name = "Placement_" + defender_id
+        placement_timer.one_shot = true
+        placement_timer.wait_time = _placement_delay(defender_id)
+        add_child(placement_timer)
+        placement_timers[defender_id] = placement_timer
 
     return selector
 
@@ -409,3 +429,37 @@ func _collect_energy(pickup: Button) -> void:
     energy += ENERGY_PICKUP_VALUE
     _refresh_energy_label()
     pickup.queue_free()
+
+
+func _placement_delay(defender_id: String) -> float:
+    match defender_id:
+        "gargoyle":
+            return 5.0
+        "mage":
+            return 4.0
+        _:
+            return 3.0
+
+
+func _start_cooldown_display() -> void:
+    var timer := Timer.new()
+    timer.name = "CooldownDisplayTimer"
+    timer.wait_time = 0.1
+    timer.timeout.connect(_refresh_defender_buttons)
+    add_child(timer)
+    timer.start()
+    _refresh_defender_buttons()
+
+
+func _refresh_defender_buttons() -> void:
+    for defender_id in defender_buttons:
+        var button: Button = defender_buttons[defender_id]
+        var timer: Timer = placement_timers[defender_id]
+        var caption: String = "%s (%d)" % [
+            _defender_name(defender_id), _defender_cost(defender_id)
+        ]
+
+        if not timer.is_stopped():
+            caption += " | %ds" % int(ceil(timer.time_left))
+
+        button.text = caption
