@@ -9,6 +9,11 @@ var enemy_health: int = 100
 var enemy_attack_cooldown: float = 0.0
 const DEFENDER_HEALTH: int = 100
 const GARGOYLE_HEALTH: int = 300
+const MAGE_DAMAGE: int = 15
+const MAGE_ATTACK_INTERVAL: float = 2.5
+const SLOW_DURATION: float = 1.5
+const SLOW_MULTIPLIER: float = 0.5
+var enemy_slow_remaining: float = 0.0
 var selected_defender: String = "sentinel"
 var defender_group: ButtonGroup = ButtonGroup.new()
 const ENEMY_ATTACK_DAMAGE: int = 25
@@ -156,6 +161,11 @@ func _process(delta: float) -> void:
     if enemy_health <= 0:
         return
 
+    var enemy_color := Color(1.0, 0.4, 0.5, 1.0)
+    if enemy_slow_remaining > 0.0:
+        enemy_color = Color(0.35, 0.75, 1.0, 1.0)
+    test_enemy.add_theme_color_override("font_color", enemy_color)
+
     if enemy_progress >= 1.0:
         selection_label.text = "A sombra chegou a base! Movimento de teste concluido."
         test_enemy.queue_free()
@@ -173,7 +183,8 @@ func _update_attacks(delta: float) -> void:
         if not cell.has_meta("defender"):
             continue
 
-        if str(cell.get_meta("defender")) != "sentinel":
+        var defender_id: String = str(cell.get_meta("defender"))
+        if defender_id == "gargoyle":
             continue
 
         var cooldown: float = maxf(
@@ -185,9 +196,19 @@ func _update_attacks(delta: float) -> void:
         if cooldown > 0.0 or enemy_center.x <= cell_center.x:
             continue
 
-        cell.set_meta("attack_cooldown", ATTACK_INTERVAL)
-        _show_shot(cell_center, enemy_center)
-        enemy_health = maxi(enemy_health - ATTACK_DAMAGE, 0)
+        var damage: int = ATTACK_DAMAGE
+        var interval: float = ATTACK_INTERVAL
+        var shot_color := Color(1.0, 0.85, 0.35, 1.0)
+
+        if defender_id == "mage":
+            damage = MAGE_DAMAGE
+            interval = MAGE_ATTACK_INTERVAL
+            shot_color = Color(0.35, 0.75, 1.0, 1.0)
+            enemy_slow_remaining = SLOW_DURATION
+
+        cell.set_meta("attack_cooldown", interval)
+        _show_shot(cell_center, enemy_center, shot_color)
+        enemy_health = maxi(enemy_health - damage, 0)
         test_enemy.text = "SOMBRA %d" % enemy_health
 
         if enemy_health == 0:
@@ -197,10 +218,10 @@ func _update_attacks(delta: float) -> void:
             return
 
 
-func _show_shot(from_position: Vector2, to_position: Vector2) -> void:
+func _show_shot(from_position: Vector2, to_position: Vector2, shot_color: Color) -> void:
     var shot := Line2D.new()
     shot.width = 4.0
-    shot.default_color = Color(1.0, 0.85, 0.35, 1.0)
+    shot.default_color = shot_color
     shot.z_index = 10
     add_child(shot)
     shot.add_point(shot.to_local(from_position))
@@ -223,8 +244,12 @@ func _advance_enemy(delta: float, first_cell: Button, last_cell: Button) -> void
     var start_x: float = last_cell.global_position.x + last_cell.size.x
     var end_x: float = first_cell.global_position.x
     var current_x: float = lerpf(start_x, end_x, enemy_progress)
+    var slowed_time: float = minf(delta, enemy_slow_remaining)
+    var movement_time: float = delta - slowed_time + slowed_time * SLOW_MULTIPLIER
+    enemy_slow_remaining = maxf(enemy_slow_remaining - delta, 0.0)
+
     var next_progress: float = minf(
-        enemy_progress + delta / ENEMY_CROSSING_SECONDS, 1.0
+        enemy_progress + movement_time / ENEMY_CROSSING_SECONDS, 1.0
     )
     var next_x: float = lerpf(start_x, end_x, next_progress)
 
@@ -279,7 +304,7 @@ func _create_defender_selector() -> HBoxContainer:
     selector.alignment = BoxContainer.ALIGNMENT_CENTER
     selector.add_theme_constant_override("separation", 12)
 
-    for defender_id in ["sentinel", "gargoyle"]:
+    for defender_id in ["sentinel", "gargoyle", "mage"]:
         var button := Button.new()
         button.text = _defender_name(defender_id)
         button.custom_minimum_size = Vector2(150, 44)
@@ -302,4 +327,6 @@ func _select_defender(defender_id: String) -> void:
 func _defender_name(defender_id: String) -> String:
     if defender_id == "gargoyle":
         return "Gargula"
+    if defender_id == "mage":
+        return "Mago"
     return "Sentinela"
