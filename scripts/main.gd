@@ -6,6 +6,10 @@ const COLUMNS: int = 7
 var test_enemy: Label
 var enemy_progress: float = 0.0
 var enemy_health: int = 100
+var enemy_attack_cooldown: float = 0.0
+const DEFENDER_HEALTH: int = 100
+const ENEMY_ATTACK_DAMAGE: int = 25
+const ENEMY_ATTACK_INTERVAL: float = 1.0
 const ATTACK_DAMAGE: int = 25
 const ATTACK_INTERVAL: float = 1.5
 const ENEMY_CROSSING_SECONDS: float = 20.0
@@ -87,8 +91,14 @@ func _on_cell_pressed(row: int, column: int) -> void:
         ]
         return
 
+    if _enemy_overlaps_cell(cell):
+        selection_label.text = "Nao pode colocar uma unidade sobre o inimigo."
+        return
+
     cell.set_meta("defender", "sentinel")
-    cell.text = "Sentinela"
+    cell.set_meta("health", DEFENDER_HEALTH)
+    cell.set_meta("attack_cooldown", 0.0)
+    cell.text = "Sentinela\n%d" % DEFENDER_HEALTH
     selection_label.text = "Sentinela colocada na faixa %d, casa %d." % [
         row + 1, column + 1
     ]
@@ -122,7 +132,7 @@ func _process(delta: float) -> void:
     if first_cell.size.x <= 0.0 or last_cell.position.x <= first_cell.position.x:
         return
 
-    enemy_progress += delta / ENEMY_CROSSING_SECONDS
+    _advance_enemy(delta, first_cell, last_cell)
     var start_x: float = last_cell.global_position.x + last_cell.size.x
     var end_x: float = first_cell.global_position.x
     var center_y: float = first_cell.global_position.y + first_cell.size.y * 0.5
@@ -187,3 +197,64 @@ func _show_shot(from_position: Vector2, to_position: Vector2) -> void:
     var tween := create_tween()
     tween.tween_property(shot, "modulate:a", 0.0, 0.2)
     tween.tween_callback(shot.queue_free)
+
+
+func _enemy_overlaps_cell(cell: Button) -> bool:
+    if not is_instance_valid(test_enemy):
+        return false
+    if test_enemy.is_queued_for_deletion() or not test_enemy.visible:
+        return false
+    return cell.get_global_rect().intersects(test_enemy.get_global_rect())
+
+
+func _advance_enemy(delta: float, first_cell: Button, last_cell: Button) -> void:
+    var start_x: float = last_cell.global_position.x + last_cell.size.x
+    var end_x: float = first_cell.global_position.x
+    var current_x: float = lerpf(start_x, end_x, enemy_progress)
+    var next_progress: float = minf(
+        enemy_progress + delta / ENEMY_CROSSING_SECONDS, 1.0
+    )
+    var next_x: float = lerpf(start_x, end_x, next_progress)
+
+    # Examina primeiro as unidades mais proximas da entrada.
+    for column in range(COLUMNS - 1, -1, -1):
+        var cell := get_node(
+            "BoardLayout/Board/Cell_1_%d" % column
+        ) as Button
+
+        if not cell.has_meta("defender"):
+            continue
+
+        var contact_x: float = cell.global_position.x + cell.size.x * 0.85
+
+        # Detecta contato mesmo quando o movimento cruza o ponto neste frame.
+        if current_x >= contact_x - 0.1 and next_x <= contact_x:
+            enemy_progress = clampf(
+                (start_x - contact_x) / (start_x - end_x), 0.0, 1.0
+            )
+            enemy_attack_cooldown = maxf(enemy_attack_cooldown - delta, 0.0)
+
+            if enemy_attack_cooldown <= 0.0:
+                enemy_attack_cooldown = ENEMY_ATTACK_INTERVAL
+                _damage_defender(cell, column)
+            return
+
+    enemy_progress = next_progress
+    enemy_attack_cooldown = 0.0
+
+
+func _damage_defender(cell: Button, column: int) -> void:
+    var health: int = maxi(
+        int(cell.get_meta("health")) - ENEMY_ATTACK_DAMAGE, 0
+    )
+    cell.set_meta("health", health)
+    cell.text = "Sentinela\n%d" % health
+
+    if health == 0:
+        cell.remove_meta("defender")
+        cell.remove_meta("health")
+        cell.remove_meta("attack_cooldown")
+        cell.text = "2 - %d" % [column + 1]
+        selection_label.text = "Sentinela destruida! A sombra voltou a avancar."
+    else:
+        selection_label.text = "A sombra esta atacando a sentinela."
